@@ -43,6 +43,9 @@ builder.Configuration["Routes:2:DownstreamHostAndPorts:0:Port"] = authApiUri.Por
 builder.Configuration["Routes:3:DownstreamScheme"] = authApiUri.Scheme;
 builder.Configuration["Routes:3:DownstreamHostAndPorts:0:Host"] = authApiUri.Host;
 builder.Configuration["Routes:3:DownstreamHostAndPorts:0:Port"] = authApiUri.Port.ToString();
+builder.Configuration["Routes:4:DownstreamScheme"] = templateApiUri.Scheme;
+builder.Configuration["Routes:4:DownstreamHostAndPorts:0:Host"] = templateApiUri.Host;
+builder.Configuration["Routes:4:DownstreamHostAndPorts:0:Port"] = templateApiUri.Port.ToString();
 builder.Configuration["GlobalConfiguration:BaseUrl"] = gatewayBaseUrl;
 
 builder.Services.AddCors(options =>

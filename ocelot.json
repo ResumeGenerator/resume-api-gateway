@@ -42,7 +42,22 @@
         { "Host": "localhost", "Port": 5003 }
       ],
       "UpstreamPathTemplate": "/api/auth/{everything}",
-      "UpstreamHttpMethod": [ "Get", "Post", "Put", "Patch", "Delete", "Options" ]
+      "UpstreamHttpMethod": [ "Get", "Post", "Put", "Patch", "Delete", "Options" ],
+      "Priority": 10
+    },
+    {
+      "DownstreamPathTemplate": "/api/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        { "Host": "localhost", "Port": 5002 }
+      ],
+      "UpstreamPathTemplate": "/api/{everything}",
+      "UpstreamHttpMethod": [ "Get", "Post", "Put", "Patch", "Delete", "Options" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "Priority": 1
     }
   ],
   "GlobalConfiguration": {
