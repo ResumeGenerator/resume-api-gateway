@@ -4,3 +4,13 @@ GET {{resume_api_gateway_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+POST {{resume_api_gateway_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "password"
+}
+
+###
