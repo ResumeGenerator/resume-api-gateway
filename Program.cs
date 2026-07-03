@@ -40,6 +40,9 @@ builder.Configuration["Routes:1:DownstreamHostAndPorts:0:Port"] = templateApiUri
 builder.Configuration["Routes:2:DownstreamScheme"] = authApiUri.Scheme;
 builder.Configuration["Routes:2:DownstreamHostAndPorts:0:Host"] = authApiUri.Host;
 builder.Configuration["Routes:2:DownstreamHostAndPorts:0:Port"] = authApiUri.Port.ToString();
+builder.Configuration["Routes:3:DownstreamScheme"] = authApiUri.Scheme;
+builder.Configuration["Routes:3:DownstreamHostAndPorts:0:Host"] = authApiUri.Host;
+builder.Configuration["Routes:3:DownstreamHostAndPorts:0:Port"] = authApiUri.Port.ToString();
 builder.Configuration["GlobalConfiguration:BaseUrl"] = gatewayBaseUrl;
 
 builder.Services.AddCors(options =>
@@ -90,6 +93,16 @@ if (app.Environment.IsDevelopment())
 
 app.UseRouting();
 app.UseCors("GatewayCors");
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsOptions(context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status204NoContent;
+        return;
+    }
+
+    await next();
+});
 app.UseAuthentication();
 app.UseAuthorization();
 
