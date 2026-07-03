@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Ocelot.DependencyInjection;
@@ -16,6 +17,10 @@ var jwtSettings = builder.Configuration.GetSection("Jwt");
 var authority = Environment.GetEnvironmentVariable("JWT_AUTHORITY") ?? jwtSettings["Authority"];
 var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? jwtSettings["Audience"];
 var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? jwtSettings["Issuer"];
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET")
+    ?? Environment.GetEnvironmentVariable("JWT_KEY")
+    ?? jwtSettings["Secret"]
+    ?? jwtSettings["Key"];
 var corsAllowedOrigins = Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS")?
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
@@ -69,17 +74,27 @@ builder.Services.AddCors(options =>
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.Authority = authority;
-        options.Audience = audience;
+        var signingKey = string.IsNullOrWhiteSpace(jwtSecret)
+            ? null
+            : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
+
+        if (signingKey is null && !string.IsNullOrWhiteSpace(authority))
+        {
+            options.Authority = authority;
+            options.Audience = audience;
+        }
+
         options.RequireHttpsMetadata = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = !string.IsNullOrWhiteSpace(issuer),
             ValidateAudience = !string.IsNullOrWhiteSpace(audience),
             ValidateLifetime = true,
-            ValidateIssuerSigningKey = false,
+            ValidateIssuerSigningKey = signingKey is not null,
+            IssuerSigningKey = signingKey,
             ValidIssuer = issuer,
-            ValidAudience = audience
+            ValidAudience = audience,
+            ClockSkew = TimeSpan.FromMinutes(2)
         };
     });
 
