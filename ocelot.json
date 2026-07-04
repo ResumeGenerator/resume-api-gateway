@@ -17,6 +17,22 @@
       "Timeout": 300
     },
     {
+      "Key": "resume-parser-rephrase",
+      "DownstreamPathTemplate": "/api/resumes/rephrase",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        { "Host": "localhost", "Port": 5001 }
+      ],
+      "UpstreamPathTemplate": "/api/resumes/rephrase",
+      "UpstreamHttpMethod": [ "Post" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "Priority": 100,
+      "Timeout": 120
+    },
+    {
       "Key": "parser-api",
       "DownstreamPathTemplate": "/{everything}",
       "DownstreamScheme": "http",

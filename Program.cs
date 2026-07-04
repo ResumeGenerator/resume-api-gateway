@@ -1,4 +1,6 @@
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.IdentityModel.Tokens;
@@ -47,6 +49,7 @@ var templateApiUri = new Uri(templateApiUrl);
 var authApiUri = new Uri(authApiUrl);
 
 ConfigureDownstreamRoute(builder.Configuration, "resume-parser-upload", parserUri);
+ConfigureDownstreamRoute(builder.Configuration, "resume-parser-rephrase", parserUri);
 ConfigureDownstreamRoute(builder.Configuration, "parser-api", parserUri);
 ConfigureDownstreamRoute(builder.Configuration, "template-api", templateApiUri);
 ConfigureDownstreamRoute(builder.Configuration, "auth-short", authApiUri);
@@ -105,6 +108,7 @@ builder.Services.Configure<FormOptions>(options =>
     options.MultipartBodyLengthLimit = MaxResumeUploadBytes;
 });
 builder.Services.AddOcelot(builder.Configuration)
+    .AddDelegatingHandler<RephraseRequestSanitizingHandler>(true)
     .AddDelegatingHandler<DownstreamRequestLoggingHandler>(true);
 
 var app = builder.Build();
@@ -221,5 +225,107 @@ sealed class DownstreamRequestLoggingHandler(ILogger<DownstreamRequestLoggingHan
                 request.RequestUri);
             throw;
         }
+    }
+}
+
+sealed class RephraseRequestSanitizingHandler(ILogger<RephraseRequestSanitizingHandler> logger) : DelegatingHandler
+{
+    private const string RephrasePath = "/api/resumes/rephrase";
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (ShouldSanitize(request))
+        {
+            await SanitizeJsonBody(request, cancellationToken);
+        }
+
+        return await base.SendAsync(request, cancellationToken);
+    }
+
+    private static bool ShouldSanitize(HttpRequestMessage request)
+    {
+        if (request.Content is null || request.RequestUri is null || request.Method != HttpMethod.Post)
+        {
+            return false;
+        }
+
+        if (!string.Equals(request.RequestUri.AbsolutePath, RephrasePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var mediaType = request.Content.Headers.ContentType?.MediaType;
+        return mediaType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    private async Task SanitizeJsonBody(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.Content is null)
+        {
+            return;
+        }
+
+        var originalContentType = request.Content.Headers.ContentType;
+        var body = await request.Content.ReadAsStringAsync(cancellationToken);
+        var sanitizedBody = body;
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("text", out var text))
+            {
+                var removedNonTextFields = HasNonTextFields(document.RootElement);
+                sanitizedBody = BuildTextOnlyJsonBody(text);
+
+                if (removedNonTextFields)
+                {
+                    logger.LogInformation("Removed non-text fields from resume rephrase request before forwarding downstream.");
+                }
+            }
+        }
+        catch (JsonException ex)
+        {
+            logger.LogDebug(ex, "Resume rephrase request body was not valid JSON; forwarding unchanged for downstream validation.");
+        }
+
+        request.Content = BuildReplacementContent(sanitizedBody, originalContentType);
+    }
+
+    private static bool HasNonTextFields(JsonElement rootElement)
+    {
+        foreach (var property in rootElement.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "text", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string BuildTextOnlyJsonBody(JsonElement text)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("text");
+            text.WriteTo(writer);
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static StringContent BuildReplacementContent(string body, MediaTypeHeaderValue? originalContentType)
+    {
+        var content = new StringContent(body, Encoding.UTF8);
+        content.Headers.ContentType = originalContentType is null
+            ? new MediaTypeHeaderValue("application/json")
+            : MediaTypeHeaderValue.Parse(originalContentType.ToString());
+
+        return content;
     }
 }
