@@ -1,6 +1,23 @@
 {
   "Routes": [
     {
+      "Key": "resume-parser-upload",
+      "DownstreamPathTemplate": "/api/resumes/parse",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        { "Host": "localhost", "Port": 5001 }
+      ],
+      "UpstreamPathTemplate": "/api/resumes/parse",
+      "UpstreamHttpMethod": [ "Post" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "Priority": 100,
+      "Timeout": 300
+    },
+    {
+      "Key": "parser-api",
       "DownstreamPathTemplate": "/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
@@ -14,6 +31,7 @@
       }
     },
     {
+      "Key": "template-api",
       "DownstreamPathTemplate": "/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
@@ -27,6 +45,7 @@
       }
     },
     {
+      "Key": "auth-short",
       "DownstreamPathTemplate": "/api/auth/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
@@ -36,6 +55,7 @@
       "UpstreamHttpMethod": [ "Get", "Post", "Put", "Patch", "Delete", "Options" ]
     },
     {
+      "Key": "auth-api",
       "DownstreamPathTemplate": "/api/auth/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
@@ -46,6 +66,7 @@
       "Priority": 10
     },
     {
+      "Key": "template-api-catchall",
       "DownstreamPathTemplate": "/api/{everything}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [

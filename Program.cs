@@ -1,10 +1,18 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.IdentityModel.Tokens;
 using Ocelot.DependencyInjection;
 using Ocelot.Middleware;
 
+const long MaxResumeUploadBytes = 50L * 1024 * 1024;
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = MaxResumeUploadBytes;
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -17,6 +25,8 @@ var jwtSettings = builder.Configuration.GetSection("Jwt");
 var authority = Environment.GetEnvironmentVariable("JWT_AUTHORITY") ?? jwtSettings["Authority"];
 var audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? jwtSettings["Audience"];
 var issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? jwtSettings["Issuer"];
+var validAudiences = BuildAcceptedJwtValues(audience);
+var validIssuers = BuildAcceptedJwtValues(issuer);
 var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET")
     ?? Environment.GetEnvironmentVariable("JWT_KEY")
     ?? jwtSettings["Secret"]
@@ -36,21 +46,12 @@ var parserUri = new Uri(parserUrl);
 var templateApiUri = new Uri(templateApiUrl);
 var authApiUri = new Uri(authApiUrl);
 
-builder.Configuration["Routes:0:DownstreamScheme"] = parserUri.Scheme;
-builder.Configuration["Routes:0:DownstreamHostAndPorts:0:Host"] = parserUri.Host;
-builder.Configuration["Routes:0:DownstreamHostAndPorts:0:Port"] = parserUri.Port.ToString();
-builder.Configuration["Routes:1:DownstreamScheme"] = templateApiUri.Scheme;
-builder.Configuration["Routes:1:DownstreamHostAndPorts:0:Host"] = templateApiUri.Host;
-builder.Configuration["Routes:1:DownstreamHostAndPorts:0:Port"] = templateApiUri.Port.ToString();
-builder.Configuration["Routes:2:DownstreamScheme"] = authApiUri.Scheme;
-builder.Configuration["Routes:2:DownstreamHostAndPorts:0:Host"] = authApiUri.Host;
-builder.Configuration["Routes:2:DownstreamHostAndPorts:0:Port"] = authApiUri.Port.ToString();
-builder.Configuration["Routes:3:DownstreamScheme"] = authApiUri.Scheme;
-builder.Configuration["Routes:3:DownstreamHostAndPorts:0:Host"] = authApiUri.Host;
-builder.Configuration["Routes:3:DownstreamHostAndPorts:0:Port"] = authApiUri.Port.ToString();
-builder.Configuration["Routes:4:DownstreamScheme"] = templateApiUri.Scheme;
-builder.Configuration["Routes:4:DownstreamHostAndPorts:0:Host"] = templateApiUri.Host;
-builder.Configuration["Routes:4:DownstreamHostAndPorts:0:Port"] = templateApiUri.Port.ToString();
+ConfigureDownstreamRoute(builder.Configuration, "resume-parser-upload", parserUri);
+ConfigureDownstreamRoute(builder.Configuration, "parser-api", parserUri);
+ConfigureDownstreamRoute(builder.Configuration, "template-api", templateApiUri);
+ConfigureDownstreamRoute(builder.Configuration, "auth-short", authApiUri);
+ConfigureDownstreamRoute(builder.Configuration, "auth-api", authApiUri);
+ConfigureDownstreamRoute(builder.Configuration, "template-api-catchall", templateApiUri);
 builder.Configuration["GlobalConfiguration:BaseUrl"] = gatewayBaseUrl;
 
 builder.Services.AddCors(options =>
@@ -87,21 +88,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.RequireHttpsMetadata = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = !string.IsNullOrWhiteSpace(issuer),
-            ValidateAudience = !string.IsNullOrWhiteSpace(audience),
+            ValidateIssuer = validIssuers.Length > 0,
+            ValidateAudience = validAudiences.Length > 0,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = signingKey is not null,
             IssuerSigningKey = signingKey,
-            ValidIssuer = issuer,
-            ValidAudience = audience,
+            ValidIssuers = validIssuers,
+            ValidAudiences = validAudiences,
             ClockSkew = TimeSpan.FromMinutes(2)
         };
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddOcelot(builder.Configuration);
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = MaxResumeUploadBytes;
+});
+builder.Services.AddOcelot(builder.Configuration)
+    .AddDelegatingHandler<DownstreamRequestLoggingHandler>(true);
 
 var app = builder.Build();
+
+app.Logger.LogInformation(
+    "Gateway downstream targets configured. Parser={ParserUrl}; TemplateApi={TemplateApiUrl}; AuthApi={AuthApiUrl}",
+    parserUri,
+    templateApiUri,
+    authApiUri);
 
 if (app.Environment.IsDevelopment())
 {
@@ -144,3 +156,70 @@ app.Use(async (context, next) =>
 await app.UseOcelot();
 
 app.Run();
+
+static string[] BuildAcceptedJwtValues(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return Array.Empty<string>();
+    }
+
+    var trimmed = value.Trim();
+    var withoutTrailingSlash = trimmed.TrimEnd('/');
+
+    return string.Equals(trimmed, withoutTrailingSlash, StringComparison.Ordinal)
+        ? new[] { trimmed }
+        : new[] { trimmed, withoutTrailingSlash };
+}
+
+static void ConfigureDownstreamRoute(IConfiguration configuration, string routeKey, Uri downstreamUri)
+{
+    var route = configuration.GetSection("Routes")
+        .GetChildren()
+        .FirstOrDefault(section => string.Equals(section["Key"], routeKey, StringComparison.OrdinalIgnoreCase));
+
+    if (route is null)
+    {
+        throw new InvalidOperationException($"Ocelot route '{routeKey}' was not found.");
+    }
+
+    route["DownstreamScheme"] = downstreamUri.Scheme;
+    route["DownstreamHostAndPorts:0:Host"] = downstreamUri.Host;
+    route["DownstreamHostAndPorts:0:Port"] = downstreamUri.Port.ToString();
+}
+
+sealed class DownstreamRequestLoggingHandler(ILogger<DownstreamRequestLoggingHandler> logger) : DelegatingHandler
+{
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "Forwarding gateway request downstream: {Method} {DownstreamUrl}",
+            request.Method,
+            request.RequestUri);
+
+        try
+        {
+            var response = await base.SendAsync(request, cancellationToken);
+            if ((int)response.StatusCode >= StatusCodes.Status500InternalServerError)
+            {
+                logger.LogError(
+                    "Downstream request failed: {Method} {DownstreamUrl} returned {StatusCode} {ReasonPhrase}",
+                    request.Method,
+                    request.RequestUri,
+                    (int)response.StatusCode,
+                    response.ReasonPhrase);
+            }
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Downstream request threw before a response was received: {Method} {DownstreamUrl}",
+                request.Method,
+                request.RequestUri);
+            throw;
+        }
+    }
+}
