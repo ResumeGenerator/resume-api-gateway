@@ -54,6 +54,7 @@ ConfigureDownstreamRoute(builder.Configuration, "parser-api", parserUri);
 ConfigureDownstreamRoute(builder.Configuration, "template-api", templateApiUri);
 ConfigureDownstreamRoute(builder.Configuration, "auth-short", authApiUri);
 ConfigureDownstreamRoute(builder.Configuration, "auth-api", authApiUri);
+ConfigureDownstreamRoute(builder.Configuration, "template-resume-image-upload", templateApiUri);
 ConfigureDownstreamRoute(builder.Configuration, "template-api-catchall", templateApiUri);
 builder.Configuration["GlobalConfiguration:BaseUrl"] = gatewayBaseUrl;
 
@@ -157,6 +158,17 @@ app.Use(async (context, next) =>
     await next();
 });
 
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        RemoveProtocolUnsafeResponseHeaders(context.Response);
+        return Task.CompletedTask;
+    });
+
+    await next();
+});
+
 await app.UseOcelot();
 
 app.Run();
@@ -190,6 +202,31 @@ static void ConfigureDownstreamRoute(IConfiguration configuration, string routeK
     route["DownstreamScheme"] = downstreamUri.Scheme;
     route["DownstreamHostAndPorts:0:Host"] = downstreamUri.Host;
     route["DownstreamHostAndPorts:0:Port"] = downstreamUri.Port.ToString();
+}
+
+static void RemoveProtocolUnsafeResponseHeaders(HttpResponse response)
+{
+    var headers = response.Headers;
+
+    // Hop-by-hop headers are invalid for HTTP/2 and can leak through reverse-proxied responses.
+    headers.Remove("Connection");
+    headers.Remove("Keep-Alive");
+    headers.Remove("Proxy-Authenticate");
+    headers.Remove("Proxy-Authorization");
+    headers.Remove("Proxy-Connection");
+    headers.Remove("TE");
+    headers.Remove("Trailer");
+    headers.Remove("Trailers");
+    headers.Remove("Transfer-Encoding");
+    headers.Remove("Upgrade");
+
+    if (response.StatusCode is StatusCodes.Status204NoContent
+        or StatusCodes.Status205ResetContent
+        or StatusCodes.Status304NotModified)
+    {
+        headers.Remove("Content-Length");
+        headers.Remove("Content-Type");
+    }
 }
 
 sealed class DownstreamRequestLoggingHandler(ILogger<DownstreamRequestLoggingHandler> logger) : DelegatingHandler
