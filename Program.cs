@@ -51,10 +51,11 @@ var authApiUri = new Uri(authApiUrl);
 ConfigureDownstreamRoute(builder.Configuration, "resume-parser-upload", parserUri);
 ConfigureDownstreamRoute(builder.Configuration, "resume-parser-rephrase", parserUri);
 ConfigureDownstreamRoute(builder.Configuration, "parser-api", parserUri);
+ConfigureDownstreamRoute(builder.Configuration, "parser-resume-image-upload", parserUri);
+ConfigureDownstreamRoute(builder.Configuration, "parser-resume-image", parserUri);
 ConfigureDownstreamRoute(builder.Configuration, "template-api", templateApiUri);
 ConfigureDownstreamRoute(builder.Configuration, "auth-short", authApiUri);
 ConfigureDownstreamRoute(builder.Configuration, "auth-api", authApiUri);
-ConfigureDownstreamRoute(builder.Configuration, "template-resume-image-upload", templateApiUri);
 ConfigureDownstreamRoute(builder.Configuration, "template-api-catchall", templateApiUri);
 builder.Configuration["GlobalConfiguration:BaseUrl"] = gatewayBaseUrl;
 

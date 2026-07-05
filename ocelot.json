@@ -82,11 +82,11 @@
       "Priority": 10
     },
     {
-      "Key": "template-resume-image-upload",
+      "Key": "parser-resume-image-upload",
       "DownstreamPathTemplate": "/api/resumes/{resumeId}/image",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
-        { "Host": "localhost", "Port": 5002 }
+        { "Host": "localhost", "Port": 5001 }
       ],
       "UpstreamPathTemplate": "/api/resumes/{resumeId}/image",
       "UpstreamHttpMethod": [ "Post" ],
@@ -96,6 +96,18 @@
       },
       "Priority": 100,
       "Timeout": 300
+    },
+    {
+      "Key": "parser-resume-image",
+      "DownstreamPathTemplate": "/api/resumes/images/{filename}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        { "Host": "localhost", "Port": 5001 }
+      ],
+      "UpstreamPathTemplate": "/api/resumes/images/{filename}",
+      "UpstreamHttpMethod": [ "Get" ],
+      "Priority": 100,
+      "Timeout": 120
     },
     {
       "Key": "template-api-catchall",
