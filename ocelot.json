@@ -110,6 +110,22 @@
       "Timeout": 120
     },
     {
+      "Key": "parser-ats-score",
+      "DownstreamPathTemplate": "/api/resumes/{resumeId}/ats-score",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        { "Host": "localhost", "Port": 5001 }
+      ],
+      "UpstreamPathTemplate": "/api/resumes/{resumeId}/ats-score",
+      "UpstreamHttpMethod": [ "Get" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "Priority": 100,
+      "Timeout": 120
+    },
+    {
       "Key": "template-api-catchall",
       "DownstreamPathTemplate": "/api/{everything}",
       "DownstreamScheme": "http",

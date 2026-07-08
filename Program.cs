@@ -53,6 +53,7 @@ ConfigureDownstreamRoute(builder.Configuration, "resume-parser-rephrase", parser
 ConfigureDownstreamRoute(builder.Configuration, "parser-api", parserUri);
 ConfigureDownstreamRoute(builder.Configuration, "parser-resume-image-upload", parserUri);
 ConfigureDownstreamRoute(builder.Configuration, "parser-resume-image", parserUri);
+ConfigureDownstreamRoute(builder.Configuration, "parser-ats-score", parserUri);
 ConfigureDownstreamRoute(builder.Configuration, "template-api", templateApiUri);
 ConfigureDownstreamRoute(builder.Configuration, "auth-short", authApiUri);
 ConfigureDownstreamRoute(builder.Configuration, "auth-api", authApiUri);
